@@ -81,8 +81,8 @@ class AgeWalletCore {
   }
 
   /// Handle callback URL from authorization.
-  /// Returns true if verification succeeded, false otherwise.
-  Future<bool> handleCallback(String url) async {
+  /// Returns an [AgeWalletResult] indicating the outcome.
+  Future<AgeWalletResult> handleCallback(String url) async {
     final uri = Uri.parse(url);
     final params = uri.queryParameters;
 
@@ -95,14 +95,16 @@ class AgeWalletCore {
     if (error != null) {
       print('[AgeWallet] Authorization error: $error - $errorDescription');
       await storage.clearOidcState();
-      return false;
+      return errorDescription == 'The user denied the request'
+          ? AgeWalletResult.denied
+          : AgeWalletResult.failed;
     }
 
     // Validate required parameters
     if (code == null || state == null) {
       print('[AgeWallet] Missing code or state in callback');
       await storage.clearOidcState();
-      return false;
+      return AgeWalletResult.failed;
     }
 
     // Validate state matches stored state
@@ -110,7 +112,7 @@ class AgeWalletCore {
     if (storedOidc == null || storedOidc.state != state) {
       print('[AgeWallet] Invalid state or session expired');
       await storage.clearOidcState();
-      return false;
+      return AgeWalletResult.failed;
     }
 
     try {
@@ -118,14 +120,14 @@ class AgeWalletCore {
       final tokenResponse = await _exchangeCode(code, storedOidc.verifier);
       if (tokenResponse == null) {
         await storage.clearOidcState();
-        return false;
+        return AgeWalletResult.failed;
       }
 
       // Fetch user info to verify age claim
       final userInfo = await _fetchUserInfo(tokenResponse['access_token']);
       if (userInfo == null) {
         await storage.clearOidcState();
-        return false;
+        return AgeWalletResult.failed;
       }
 
       // Check age_verified claim
@@ -133,7 +135,7 @@ class AgeWalletCore {
       if (!ageVerified) {
         print('[AgeWallet] Age verification failed');
         await storage.clearOidcState();
-        return false;
+        return AgeWalletResult.failed;
       }
 
       // Calculate expiry (use expires_in from token or default to 1 hour)
@@ -149,11 +151,11 @@ class AgeWalletCore {
       ));
 
       await storage.clearOidcState();
-      return true;
+      return AgeWalletResult.success;
     } catch (e) {
       print('[AgeWallet] Error during token exchange: $e');
       await storage.clearOidcState();
-      return false;
+      return AgeWalletResult.failed;
     }
   }
 

@@ -103,7 +103,16 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _handleCallback(String url) async {
     setState(() => _isLoading = true);
-    await _ageWallet.handleCallback(url);
+    final result = await _ageWallet.handleCallback(url);
+    if (result == AgeWalletResult.denied && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Age verification was cancelled.')),
+      );
+    } else if (result == AgeWalletResult.failed && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Verification could not be completed. Please try again.')),
+      );
+    }
     await _checkVerification();
   }
 

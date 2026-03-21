@@ -61,8 +61,8 @@ class AgeWallet {
   /// Usually not needed as [startVerification] handles callbacks automatically.
   /// Use this if you're handling deep links manually.
   ///
-  /// Returns `true` if verification succeeded, `false` otherwise.
-  Future<bool> handleCallback(String url) => _core.handleCallback(url);
+  /// Returns an [AgeWalletResult] indicating the outcome.
+  Future<AgeWalletResult> handleCallback(String url) => _core.handleCallback(url);
 
   /// Clear the stored verification state (logout).
   Future<void> clearVerification() => _core.clearVerification();

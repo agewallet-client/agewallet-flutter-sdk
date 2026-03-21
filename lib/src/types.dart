@@ -1,5 +1,17 @@
 /// Configuration and state types for AgeWallet SDK.
 
+/// Result of an age verification callback.
+enum AgeWalletResult {
+  /// Verification completed successfully.
+  success,
+
+  /// User denied consent on the AgeWallet screen.
+  denied,
+
+  /// Verification process failed (identity check unsuccessful).
+  failed,
+}
+
 /// Custom endpoint configuration for AgeWallet SDK.
 class AgeWalletEndpoints {
   final String? auth;
