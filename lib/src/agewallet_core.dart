@@ -61,7 +61,7 @@ class AgeWalletCore {
   /// Start the verification flow.
   /// Opens the system browser to AgeWallet authorization page.
   /// Uses FlutterWebAuth2 — suitable for Android. On iOS use buildVerificationURL() instead.
-  Future<void> startVerification() async {
+  Future<AgeWalletResult> startVerification() async {
     final authUrl = await buildVerificationURL();
 
     try {
@@ -72,11 +72,11 @@ class AgeWalletCore {
       );
 
       // Handle the callback
-      await handleCallback(callbackUrlStr);
+      return await handleCallback(callbackUrlStr);
     } catch (e) {
       // User cancelled or error occurred
       await storage.clearOidcState();
-      rethrow;
+      return AgeWalletResult.failed;
     }
   }
 

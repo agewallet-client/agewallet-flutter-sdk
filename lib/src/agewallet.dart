@@ -54,7 +54,7 @@ class AgeWallet {
   /// Opens the system browser to the AgeWallet authorization page.
   /// The callback is handled automatically when control returns to your app.
   /// On Android only. On iOS use [buildVerificationURL] instead.
-  Future<void> startVerification() => _core.startVerification();
+  Future<AgeWalletResult> startVerification() => _core.startVerification();
 
   /// Manually handle a callback URL.
   ///

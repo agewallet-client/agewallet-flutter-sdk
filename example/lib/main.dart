@@ -88,7 +88,16 @@ class _HomePageState extends State<HomePage> {
         await launchUrl(url, mode: LaunchMode.externalApplication);
         // iOS: loading stays true until _handleCallback fires via Universal Link
       } else {
-        await _ageWallet.startVerification();
+        final result = await _ageWallet.startVerification();
+        if (result == AgeWalletResult.denied && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Age verification was cancelled.')),
+          );
+        } else if (result == AgeWalletResult.failed && mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Verification could not be completed. Please try again.')),
+          );
+        }
         await _checkVerification();
       }
     } catch (e) {
