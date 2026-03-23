@@ -102,7 +102,7 @@ class _HomePageState extends State<HomePage> {
       }
     } catch (e) {
       setState(() => _isLoading = false);
-      if (mounted) {
+      if (!Platform.isIOS && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Verification failed: $e')),
         );
@@ -113,16 +113,18 @@ class _HomePageState extends State<HomePage> {
   Future<void> _handleCallback(String url) async {
     setState(() => _isLoading = true);
     final result = await _ageWallet.handleCallback(url);
-    if (result == AgeWalletResult.denied && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Age verification was cancelled.')),
-      );
-    } else if (result == AgeWalletResult.failed && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Verification could not be completed. Please try again.')),
-      );
-    }
     await _checkVerification();
+    if (!_isVerified && mounted) {
+      if (result == AgeWalletResult.denied) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Age verification was cancelled.')),
+        );
+      } else if (result == AgeWalletResult.failed) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Verification could not be completed. Please try again.')),
+        );
+      }
+    }
   }
 
   Future<void> _clearVerification() async {
