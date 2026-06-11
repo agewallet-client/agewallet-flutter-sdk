@@ -8,8 +8,14 @@ import 'storage.dart';
 
 /// Core OIDC/PKCE implementation for AgeWallet age verification.
 class AgeWalletCore {
-  final AgeWalletConfig config;
+  /// Maximum byte length for the metadata string (matches server-side limit).
+  static const int metadataMaxBytes = 4096;
+
+  AgeWalletConfig config;
   final Storage storage;
+
+  /// Runtime metadata default; mutable via setMetadata(). Initialised from config.metadata.
+  String? _currentMetadata;
 
   AgeWalletCore({
     required this.config,
@@ -21,6 +27,8 @@ class AgeWalletCore {
     if (config.redirectUri.isEmpty) {
       throw ArgumentError('[AgeWallet] Missing redirectUri');
     }
+    _validateMetadata(config.metadata);
+    _currentMetadata = config.metadata;
   }
 
   /// Check if the user is currently verified (and not expired).
@@ -29,13 +37,43 @@ class AgeWalletCore {
     return state?.isVerified ?? false;
   }
 
+  /// Update the metadata default attached to subsequent verifications.
+  /// Pass null to clear. Validates length; throws ArgumentError if > 4096 bytes.
+  void setMetadata(String? value) {
+    _validateMetadata(value);
+    _currentMetadata = value;
+  }
+
+  /// Return the metadata that round-tripped with the current persisted verification, or null.
+  Future<String?> getMetadata() async {
+    final state = await storage.getVerification();
+    return state?.metadata;
+  }
+
+  void _validateMetadata(String? value) {
+    if (value == null) return;
+    if (value.codeUnits.length > metadataMaxBytes) {
+      throw ArgumentError(
+          '[AgeWallet] metadata exceeds $metadataMaxBytes-byte limit');
+    }
+  }
+
   /// Build the authorization URL for the verification flow.
   /// Generates PKCE parameters, stores OIDC state, and returns the URL to open.
   /// Use this on iOS with url_launcher; use startVerification() on Android.
-  Future<Uri> buildVerificationURL() async {
+  ///
+  /// [metadata] - Optional per-call override; does NOT change the instance default.
+  Future<Uri> buildVerificationURL({String? metadata}) async {
+    final effectiveMetadata = metadata ?? _currentMetadata;
+    _validateMetadata(effectiveMetadata);
+
     final verifier = Security.generateVerifier();
     final challenge = Security.generateChallenge(verifier);
-    final state = Security.generateState();
+    // Prefix matches the netlify autoMap so the callback page can auto-fire the
+    // intent for this demo's package. Without a recognized prefix the netlify
+    // page falls through to a manual button view, requiring user interaction
+    // to complete the OIDC chain.
+    final state = 'flutter:${Security.generateState()}';
     final nonce = Security.generateNonce();
 
     await storage.setOidcState(OidcState(
@@ -44,25 +82,31 @@ class AgeWalletCore {
       nonce: nonce,
     ));
 
-    return Uri.parse(config.authEndpoint).replace(
-      queryParameters: {
-        'response_type': 'code',
-        'client_id': config.clientId,
-        'redirect_uri': config.redirectUri,
-        'scope': 'openid age',
-        'state': state,
-        'code_challenge': challenge,
-        'code_challenge_method': 'S256',
-        'nonce': nonce,
-      },
-    );
+    final params = <String, String>{
+      'response_type': 'code',
+      'client_id': config.clientId,
+      'redirect_uri': config.redirectUri,
+      'scope': 'openid age',
+      'state': state,
+      'code_challenge': challenge,
+      'code_challenge_method': 'S256',
+      'nonce': nonce,
+    };
+
+    if (effectiveMetadata != null && effectiveMetadata.isNotEmpty) {
+      params['metadata'] = effectiveMetadata;
+    }
+
+    return Uri.parse(config.authEndpoint).replace(queryParameters: params);
   }
 
   /// Start the verification flow.
   /// Opens the system browser to AgeWallet authorization page.
   /// Uses FlutterWebAuth2 — suitable for Android. On iOS use buildVerificationURL() instead.
-  Future<AgeWalletResult> startVerification() async {
-    final authUrl = await buildVerificationURL();
+  ///
+  /// [metadata] - Optional per-call override; does NOT change the instance default.
+  Future<AgeWalletResult> startVerification({String? metadata}) async {
+    final authUrl = await buildVerificationURL(metadata: metadata);
 
     try {
       // Open browser and wait for callback
@@ -143,11 +187,13 @@ class AgeWalletCore {
       final expiresAt =
           DateTime.now().millisecondsSinceEpoch + (expiresIn * 1000);
 
-      // Store verification state
+      // Store verification state (including any metadata round-tripped via /userinfo)
+      final returnedMetadata = userInfo['metadata'] as String?;
       await storage.setVerification(VerificationState(
         accessToken: tokenResponse['access_token'],
         expiresAt: expiresAt,
         isVerified: true,
+        metadata: returnedMetadata,
       ));
 
       await storage.clearOidcState();

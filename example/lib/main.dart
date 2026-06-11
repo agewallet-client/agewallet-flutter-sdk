@@ -34,10 +34,22 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
+const _clientId = 'your-client-id';
+const _authUrl = 'https://app.agewallet.io/user/authorize';
+const _tokenUrl = 'https://app.agewallet.io/user/token';
+const _userinfoUrl = 'https://app.agewallet.io/user/userinfo';
+
 class _HomePageState extends State<HomePage> {
+  // Auto-detected default metadata: identifies the demo build to the dev/QA team
+  // when verifications land on the server.
+  String get _autoDefault => Platform.isIOS ? 'Flutter iOS' : 'Flutter Android';
+
   late final AgeWallet _ageWallet;
   bool _isVerified = false;
   bool _isLoading = true;
+  String? _lastMetadata;
+
+  final TextEditingController _customController = TextEditingController();
 
   AppLinks? _appLinks;
   StreamSubscription<Uri>? _linkSub;
@@ -46,8 +58,14 @@ class _HomePageState extends State<HomePage> {
   void initState() {
     super.initState();
     _ageWallet = AgeWallet(
-      clientId: '239472f9-3398-47ea-ad13-fe9502a0eb33',
+      clientId: _clientId,
       redirectUri: 'https://agewallet-sdk-demo.netlify.app/callback',
+      endpoints: AgeWalletEndpoints(
+        auth: _authUrl,
+        token: _tokenUrl,
+        userinfo: _userinfoUrl,
+      ),
+      metadata: _autoDefault,
     );
     _checkVerification();
 
@@ -65,14 +83,17 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _linkSub?.cancel();
+    _customController.dispose();
     super.dispose();
   }
 
   Future<void> _checkVerification() async {
     try {
       final isVerified = await _ageWallet.isVerified();
+      final metadata = isVerified ? await _ageWallet.getMetadata() : null;
       setState(() {
         _isVerified = isVerified;
+        _lastMetadata = metadata;
         _isLoading = false;
       });
     } catch (e) {
@@ -82,13 +103,16 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _startVerification() async {
     setState(() => _isLoading = true);
+    // If the "Custom metadata" field has text, append it to the auto-default for
+    // this verification only. Otherwise the instance default kicks in (set in initState).
+    final custom = _customController.text.trim();
+    final override = custom.isNotEmpty ? '$_autoDefault | $custom' : null;
     try {
       if (Platform.isIOS) {
-        final url = await _ageWallet.buildVerificationURL();
+        final url = await _ageWallet.buildVerificationURL(metadata: override);
         await launchUrl(url, mode: LaunchMode.externalApplication);
-        // iOS: loading stays true until _handleCallback fires via Universal Link
       } else {
-        final result = await _ageWallet.startVerification();
+        final result = await _ageWallet.startVerification(metadata: override);
         if (result == AgeWalletResult.denied && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Age verification was cancelled.')),
@@ -99,6 +123,13 @@ class _HomePageState extends State<HomePage> {
           );
         }
         await _checkVerification();
+      }
+    } on ArgumentError catch (e) {
+      setState(() => _isLoading = false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message ?? 'Metadata too long')),
+        );
       }
     } catch (e) {
       setState(() => _isLoading = false);
@@ -129,7 +160,10 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _clearVerification() async {
     await _ageWallet.clearVerification();
-    setState(() => _isVerified = false);
+    setState(() {
+      _isVerified = false;
+      _lastMetadata = null;
+    });
   }
 
   @override
@@ -139,7 +173,7 @@ class _HomePageState extends State<HomePage> {
       body: SafeArea(
         child: Center(
           child: Padding(
-            padding: const EdgeInsets.all(32.0),
+            padding: const EdgeInsets.all(24.0),
             child: _isLoading
                 ? const CircularProgressIndicator()
                 : _isVerified
@@ -152,60 +186,96 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildUnverifiedView() {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Container(
-          width: 100,
-          height: 100,
-          decoration: BoxDecoration(
-            color: const Color(0xFF6366F1).withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(50),
+    return SingleChildScrollView(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox(height: 16),
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              color: const Color(0xFF6366F1).withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(40),
+            ),
+            child: const Icon(Icons.lock_outline, size: 40, color: Color(0xFF6366F1)),
           ),
-          child: const Icon(
-            Icons.lock_outline,
-            size: 50,
-            color: Color(0xFF6366F1),
+          const SizedBox(height: 20),
+          const Text(
+            'Age Verification Required',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
           ),
-        ),
-        const SizedBox(height: 32),
-        const Text(
-          'Age Verification Required',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1F2937),
+          const SizedBox(height: 8),
+          const Text(
+            'You must verify your age to access this content.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
           ),
-        ),
-        const SizedBox(height: 12),
-        const Text(
-          'You must verify your age to access this content.',
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 16,
-            color: Color(0xFF6B7280),
+          const SizedBox(height: 28),
+
+          // Auto-detected default metadata — informational, baked in at build time.
+          _sectionLabel('Default metadata (auto)'),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF3F4F6),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              _autoDefault,
+              style: const TextStyle(fontSize: 14, color: Color(0xFF1F2937), fontFamily: 'monospace'),
+            ),
           ),
-        ),
-        const SizedBox(height: 32),
-        SizedBox(
-          width: double.infinity,
-          child: ElevatedButton(
-            onPressed: _startVerification,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF6366F1),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+
+          const SizedBox(height: 20),
+
+          // Optional per-call append — concatenated to the default for this verification only.
+          _sectionLabel('Custom metadata (optional, appended for this call only)'),
+          TextField(
+            controller: _customController,
+            decoration: const InputDecoration(
+              hintText: 'e.g. order-1234',
+              border: OutlineInputBorder(),
+              isDense: true,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'If populated, sent as "$_autoDefault | <your text>" for this verification only.',
+            style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
+          ),
+
+          const SizedBox(height: 24),
+
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _startVerification,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF6366F1),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-            ),
-            child: const Text(
-              'Verify with AgeWallet',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+              child: const Text('Verify with AgeWallet', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _sectionLabel(String text) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF374151)),
         ),
-      ],
+      ),
     );
   }
 
@@ -220,47 +290,58 @@ class _HomePageState extends State<HomePage> {
             color: const Color(0xFF10B981).withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(50),
           ),
-          child: const Icon(
-            Icons.check_circle_outline,
-            size: 50,
-            color: Color(0xFF10B981),
-          ),
+          child: const Icon(Icons.check_circle_outline, size: 50, color: Color(0xFF10B981)),
         ),
         const SizedBox(height: 32),
         const Text(
           'Age Verified',
-          style: TextStyle(
-            fontSize: 24,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1F2937),
-          ),
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Color(0xFF1F2937)),
         ),
         const SizedBox(height: 12),
         const Text(
           'You have successfully verified your age.',
           textAlign: TextAlign.center,
-          style: TextStyle(
-            fontSize: 16,
-            color: Color(0xFF6B7280),
+          style: TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+        ),
+        const SizedBox(height: 24),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Metadata attached to current verification:',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF6B7280)),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _lastMetadata ?? '(none)',
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontFamily: 'monospace',
+                  color: Color(0xFF1F2937),
+                ),
+              ),
+            ],
           ),
         ),
-        const SizedBox(height: 32),
+        const SizedBox(height: 24),
         SizedBox(
           width: double.infinity,
           child: OutlinedButton(
             onPressed: _clearVerification,
             style: OutlinedButton.styleFrom(
               foregroundColor: const Color(0xFF6B7280),
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               side: const BorderSide(color: Color(0xFFE5E7EB)),
             ),
-            child: const Text(
-              'Clear Verification',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-            ),
+            child: const Text('Clear Verification', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
           ),
         ),
       ],

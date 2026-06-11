@@ -131,6 +131,7 @@ AgeWallet({
   required String clientId,
   required String redirectUri,
   AgeWalletEndpoints? endpoints,
+  String? metadata,
 })
 ```
 
@@ -139,6 +140,7 @@ AgeWallet({
 | `clientId` | String | Yes | Your client ID from AgeWallet dashboard |
 | `redirectUri` | String | Yes | Your app's universal link callback URL |
 | `endpoints` | AgeWalletEndpoints | No | Override default API endpoints |
+| `metadata` | String? | No | Opaque per-verification string (max 4096 UTF-8 bytes) that round-trips through `/userinfo`. See [Metadata](#metadata) below. |
 
 #### Methods
 
@@ -173,6 +175,48 @@ Future<void> clearVerification()
 ```
 
 Clears the stored verification state (logout).
+
+##### `setMetadata(value)`
+
+```dart
+void setMetadata(String? value)
+```
+
+Updates the instance default metadata attached to subsequent verifications. Pass `null` to clear. Throws `ArgumentError` if the value exceeds `AgeWalletCore.metadataMaxBytes` (4096).
+
+##### `getMetadata()`
+
+```dart
+Future<String?> getMetadata()
+```
+
+Returns the metadata that round-tripped with the currently-persisted verification, or `null` if none.
+
+##### `startVerification({ String? metadata })`
+
+The optional `metadata` parameter overrides the instance default for that one verification only — it does not mutate the default.
+
+## Metadata
+
+Attach an opaque per-verification string (max 4096 UTF-8 bytes) that round-trips through `/userinfo` and is visible to your backend and the AgeWallet dashboard. Useful for tagging build, environment, or user-flow context.
+
+```dart
+// Set as the instance default at construction
+final ageWallet = AgeWallet(
+  clientId: 'your-client-id',
+  redirectUri: 'https://yourapp.com/callback',
+  metadata: 'checkout-flow',
+);
+
+// Update the default at runtime
+ageWallet.setMetadata('new-default');
+
+// Override for a single verification only (does not change the default)
+await ageWallet.startVerification(metadata: 'one-shot');
+
+// Read the metadata that round-tripped with the current verification
+final received = await ageWallet.getMetadata();
+```
 
 ## Security
 

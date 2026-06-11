@@ -31,10 +31,15 @@ class AgeWalletConfig {
   final String redirectUri;
   final AgeWalletEndpoints? endpoints;
 
+  /// Optional opaque per-verification metadata string (max 4096 bytes).
+  /// Attached to every verification unless overridden per-call.
+  final String? metadata;
+
   const AgeWalletConfig({
     required this.clientId,
     required this.redirectUri,
     this.endpoints,
+    this.metadata,
   });
 
   String get authEndpoint =>
@@ -52,11 +57,13 @@ class VerificationState {
   final String accessToken;
   final int expiresAt;
   final bool isVerified;
+  final String? metadata;
 
   const VerificationState({
     required this.accessToken,
     required this.expiresAt,
     required this.isVerified,
+    this.metadata,
   });
 
   factory VerificationState.fromJson(Map<String, dynamic> json) {
@@ -64,6 +71,7 @@ class VerificationState {
       accessToken: json['accessToken'] as String,
       expiresAt: json['expiresAt'] as int,
       isVerified: json['isVerified'] as bool,
+      metadata: json['metadata'] as String?,
     );
   }
 
@@ -72,6 +80,7 @@ class VerificationState {
       'accessToken': accessToken,
       'expiresAt': expiresAt,
       'isVerified': isVerified,
+      if (metadata != null) 'metadata': metadata,
     };
   }
 

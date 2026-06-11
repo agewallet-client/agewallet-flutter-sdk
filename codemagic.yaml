@@ -31,6 +31,8 @@ workflows:
             --save \
             --verbose
           keychain add-certificates
+      - name: Disable Flutter Swift Package Manager (use CocoaPods for all iOS plugins)
+        script: flutter config --no-enable-swift-package-manager
       - name: Get Flutter packages
         script: flutter pub get
         working_directory: example
